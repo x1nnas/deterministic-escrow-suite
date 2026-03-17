@@ -91,4 +91,20 @@ contract SimpleEscrow is ReentrancyGuard {
         emit Released(payee, amountAfterFee);
     }
 
+    function reclaim() external nonReentrant {
+
+        require(block.timestamp > deadline, "Deadline not reached");
+        require(!released, "Already released");
+        require(!reclaimed, "Already reclaimed");
+        require(funded, "Not funded"); 
+
+        reclaimed = true;
+
+        uint256 balance = address(this).balance;
+
+        (bool successReclaim, ) = payable(depositor).call{value: balance}("");
+        require (successReclaim, "Refund failed");
+
+        emit Reclaimed(depositor, balance);
+    }
 }
