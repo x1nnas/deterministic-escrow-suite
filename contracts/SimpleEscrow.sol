@@ -2,10 +2,12 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract SimpleEscrow is ReentrancyGuard {
 
+    using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
 
     // immutable config
@@ -18,11 +20,13 @@ contract SimpleEscrow is ReentrancyGuard {
     // mutable state
     bool public funded;
     bool public released;
+    bool public reclaimed;
     uint256 public depositAmount;
 
     // events
     event Funded(uint amount);
     event Released(address indexed payee, uint256 amountAfterFee); // 'indexed' allows filtering logs by payee
+    event Reclaimed(address indexed depositor, uint256 amount);
 
     constructor(
         address _factory,
@@ -58,9 +62,33 @@ contract SimpleEscrow is ReentrancyGuard {
         
         bytes32 messageHash = hashRelease(amount);
         
-        bytes32 ethSignedHash = hashRelease(amount).toEthSignedMessageHash();
+        bytes32 ethSignedHash = messageHash.toEthSignedMessageHash();
         
         require(sig.length == 65, "Invalid signature length");
 
+        address signer = ethSignedHash.recover(sig);
+
+        return signer; 
     }
+
+    function release(uint256 amount, bytes memory sig) external nonReentrant {
+
+        require(funded, "Escrow not funded");
+        require(!released, "Already released");
+        require(verify(amount, sig) == depositor, "Invalid signature");
+        require(amount == depositAmount, "Invalid amount");
+        uint256 fee = amount * feePercent / 100;
+        uint256 amountAfterFee = amount - fee;
+
+        released = true;
+
+        (bool successPayee, ) = payable(payee).call{value: amountAfterFee}("");
+        require(successPayee, "Transfer failed");
+
+        (bool successFee, ) = payable(factory).call{value: fee}("");
+        require(successFee, "Transfer failed");
+
+        emit Released(payee, amountAfterFee);
+    }
+
 }
