@@ -89,4 +89,6 @@ contract EscrowFactory is Ownable, Pausable, ReentrancyGuard {
     function getEscrows(address depositor) external view returns (address[] memory) {
         return escrows[depositor];
     }
+
+    receive() external payable {}
 }
